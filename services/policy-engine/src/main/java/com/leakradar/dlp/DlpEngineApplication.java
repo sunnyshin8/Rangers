@@ -1,4 +1,4 @@
-package com.leakradar.dlp;
+package com.leakradar.policyengine;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;

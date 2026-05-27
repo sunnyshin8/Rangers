@@ -1,4 +1,4 @@
-package com.leakradar.dlp.service;
+package com.leakradar.policyengine.service;
 
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;

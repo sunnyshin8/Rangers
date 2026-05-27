@@ -10,7 +10,7 @@ See the implementation plan in the repository README and the original design doc
 | bff | 4000 | Node/Fastify | API gateway, auth proxy |
 | org-identity | 8081 | Java | Tenants, users, JWT, integrations |
 | source-ingestor | 8082 | Java | GitHub/CI webhooks → Kafka |
-| dlp-engine | 8083 | Java | Policies, incidents, correlation |
+| policy-engine | 8083 | Java | Policies, incidents, correlation |
 | internal-scanner | 8084 | Java | Secret/code scanning |
 | alert-service | 8085 | Python | Notifications, SSE |
 | external-monitor | — | Python | Bright Data external scans |
@@ -19,10 +19,10 @@ See the implementation plan in the repository README and the original design doc
 ## Kafka topics
 
 - `internal.events` → Internal Scanner
-- `dlp.candidates` → ML (optional) or DLP Engine
-- `dlp.candidates.classified` → DLP Engine (when ML enabled)
-- `dlp.external.candidates` → DLP Engine
-- `dlp.incidents` → Alert Service
+- `policy.candidates` → ML (optional) or DLP Engine
+- `policy.candidates.classified` → DLP Engine (when ML enabled)
+- `policy.external.candidates` → DLP Engine
+- `policy.incidents` → Alert Service
 
 ## MVP phases
 

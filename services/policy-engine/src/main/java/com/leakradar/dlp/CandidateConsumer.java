@@ -1,8 +1,8 @@
-package com.leakradar.dlp;
+package com.leakradar.policyengine;
 
 import com.leakradar.common.events.ExternalLeakCandidate;
 import com.leakradar.common.kafka.Topics;
-import com.leakradar.dlp.service.IncidentService;
+import com.leakradar.policyengine.service.IncidentService;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
@@ -15,7 +15,7 @@ public class CandidateConsumer {
         this.incidentService = incidentService;
     }
 
-    @KafkaListener(topics = Topics.DLP_EXTERNAL_CANDIDATES, groupId = "dlp-engine-external")
+    @KafkaListener(topics = Topics.POLICY_EXTERNAL_CANDIDATES, groupId = "dlp-engine-external")
     public void onExternal(ExternalLeakCandidate candidate) {
         incidentService.createFromExternal(candidate);
     }

@@ -1,4 +1,4 @@
-package com.leakradar.dlp.api;
+package com.leakradar.policyengine.api;
 
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;

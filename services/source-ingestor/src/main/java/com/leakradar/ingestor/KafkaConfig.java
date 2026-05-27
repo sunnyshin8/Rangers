@@ -15,21 +15,21 @@ public class KafkaConfig {
 
     @Bean
     public NewTopic dlpCandidates() {
-        return TopicBuilder.name("dlp.candidates").partitions(3).replicas(1).build();
+        return TopicBuilder.name("policy.candidates").partitions(3).replicas(1).build();
     }
 
     @Bean
     public NewTopic dlpExternalCandidates() {
-        return TopicBuilder.name("dlp.external.candidates").partitions(3).replicas(1).build();
+        return TopicBuilder.name("policy.external.candidates").partitions(3).replicas(1).build();
     }
 
     @Bean
     public NewTopic dlpCandidatesClassified() {
-        return TopicBuilder.name("dlp.candidates.classified").partitions(3).replicas(1).build();
+        return TopicBuilder.name("policy.candidates.classified").partitions(3).replicas(1).build();
     }
 
     @Bean
     public NewTopic dlpIncidents() {
-        return TopicBuilder.name("dlp.incidents").partitions(3).replicas(1).build();
+        return TopicBuilder.name("policy.incidents").partitions(3).replicas(1).build();
     }
 }

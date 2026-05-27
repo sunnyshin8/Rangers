@@ -35,7 +35,7 @@ public class RepoEventConsumer {
                 }
                 scanned++;
                 secretDetector.scan(event, file).forEach(c ->
-                        kafkaTemplate.send(Topics.DLP_CANDIDATES, c.candidateId(), c));
+                        kafkaTemplate.send(Topics.POLICY_CANDIDATES, c.candidateId(), c));
             }
         }
         coverageService.record(event.tenantId(), event.repoId(), scanned, skipped);

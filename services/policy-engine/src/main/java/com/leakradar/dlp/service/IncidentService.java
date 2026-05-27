@@ -1,4 +1,4 @@
-package com.leakradar.dlp.service;
+package com.leakradar.policyengine.service;
 
 import com.leakradar.common.events.ExternalLeakCandidate;
 import com.leakradar.common.events.LeakCandidate;
@@ -101,7 +101,7 @@ public class IncidentService {
     }
 
     private void publishIncident(UUID incidentId, String tenantId, String source) {
-        kafkaTemplate.send(Topics.DLP_INCIDENTS, incidentId.toString(), new LeakIncidentEvent(
+        kafkaTemplate.send(Topics.POLICY_INCIDENTS, incidentId.toString(), new LeakIncidentEvent(
                 incidentId, tenantId, "Leak incident", "high", "open", source, null, null, Instant.now()));
     }
 }

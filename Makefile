@@ -7,7 +7,7 @@ migrate:
 	./scripts/migrate.sh
 
 build-java:
-	cd services && mvn -q -pl source-ingestor,internal-scanner,dlp-engine,org-identity -am package -DskipTests
+	cd services && mvn -q -pl source-ingestor,internal-scanner,policy-engine,org-identity -am package -DskipTests
 
 npm-install:
 	cd apps/bff && npm install

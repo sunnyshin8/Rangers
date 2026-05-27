@@ -1,4 +1,4 @@
-package com.leakradar.dlp.service;
+package com.leakradar.policyengine.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;

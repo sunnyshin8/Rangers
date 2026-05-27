@@ -1,6 +1,6 @@
-package com.leakradar.dlp.api;
+package com.leakradar.policyengine.api;
 
-import com.leakradar.dlp.service.IncidentQueryService;
+import com.leakradar.policyengine.service.IncidentQueryService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
