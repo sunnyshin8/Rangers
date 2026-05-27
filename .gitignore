@@ -1,0 +1,14 @@
+node_modules/
+target/
+.next/
+dist/
+.env
+*.class
+.idea/
+.vscode/
+__pycache__/
+.venv/
+*.jar
+!services/**/src/
+ae780dbb-d5a2-438d-b15d-173c544b646e.txt
+docs/remaining-work.md

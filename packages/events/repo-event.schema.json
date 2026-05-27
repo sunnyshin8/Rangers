@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://leakradar.local/schemas/RepoEvent.json",
+  "title": "RepoEvent",
+  "type": "object",
+  "required": ["eventId", "tenantId", "repoId", "eventType", "commitSha", "timestamp"],
+  "properties": {
+    "eventId": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "repoId": { "type": "string" },
+    "repoFullName": { "type": "string" },
+    "eventType": { "enum": ["push", "pull_request", "pipeline"] },
+    "branch": { "type": "string" },
+    "commitSha": { "type": "string" },
+    "author": { "type": "string" },
+    "commitMessage": { "type": "string" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "content"],
+        "properties": {
+          "path": { "type": "string" },
+          "content": { "type": "string" },
+          "changeType": { "enum": ["added", "modified", "removed"] }
+        }
+      }
+    }
+  }
+}

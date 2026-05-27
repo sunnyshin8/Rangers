@@ -1,0 +1,65 @@
+# Optional: run all app services (requires built Java JARs and Python venvs)
+services:
+  org-identity:
+    image: eclipse-temurin:21-jre
+    working_dir: /app
+    volumes:
+      - ../services/org-identity/target:/app
+    command: java -jar org-identity-1.0.0-SNAPSHOT.jar
+    ports: ["8081:8081"]
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/leakradar
+    depends_on: [postgres]
+
+  source-ingestor:
+    image: eclipse-temurin:21-jre
+    working_dir: /app
+    volumes:
+      - ../services/source-ingestor/target:/app
+    command: java -jar source-ingestor-1.0.0-SNAPSHOT.jar
+    ports: ["8082:8082"]
+    depends_on: [postgres, redpanda]
+
+  dlp-engine:
+    image: eclipse-temurin:21-jre
+    working_dir: /app
+    volumes:
+      - ../services/dlp-engine/target:/app
+    command: java -jar dlp-engine-1.0.0-SNAPSHOT.jar
+    ports: ["8083:8083"]
+    environment:
+      ML_PIPELINE_ENABLED: "true"
+    depends_on: [postgres, redpanda]
+
+  internal-scanner:
+    image: eclipse-temurin:21-jre
+    working_dir: /app
+    volumes:
+      - ../services/internal-scanner/target:/app
+    command: java -jar internal-scanner-1.0.0-SNAPSHOT.jar
+    ports: ["8084:8084"]
+    depends_on: [redpanda]
+
+  ml-classifier:
+    build: ../services/ml-classifier
+    environment:
+      KAFKA_BOOTSTRAP: redpanda:9092
+      DATABASE_URL: postgresql://leakradar:leakradar@postgres:5432/leakradar
+    depends_on: [redpanda, postgres]
+
+  external-monitor:
+    build: ../services/external-monitor
+    environment:
+      KAFKA_BOOTSTRAP: redpanda:9092
+      DATABASE_URL: postgresql://leakradar:leakradar@postgres:5432/leakradar
+      BRIGHT_DATA_MOCK: "true"
+    depends_on: [redpanda, postgres]
+
+  alert-service:
+    build: ../services/alert-service
+    ports: ["8085:8085"]
+    environment:
+      KAFKA_BOOTSTRAP: redpanda:9092
+      DATABASE_URL: postgresql://leakradar:leakradar@postgres:5432/leakradar
+      REDIS_URL: redis://redis:6379/0
+    depends_on: [redpanda, postgres, redis]

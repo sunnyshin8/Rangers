@@ -1,0 +1,18 @@
+server:
+  port: 8082
+spring:
+  application:
+    name: source-ingestor
+  datasource:
+    url: jdbc:postgresql://localhost:5432/leakradar
+    username: leakradar
+    password: leakradar
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+leakradar:
+  default-tenant-id: "00000000-0000-0000-0000-000000000001"
+  github:
+    webhook-secret: ${GITHUB_WEBHOOK_SECRET:}

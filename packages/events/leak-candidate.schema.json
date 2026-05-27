@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://leakradar.local/schemas/LeakCandidate.json",
+  "title": "LeakCandidate",
+  "type": "object",
+  "required": ["candidateId", "tenantId", "source", "type", "confidence", "timestamp"],
+  "properties": {
+    "candidateId": { "type": "string" },
+    "tenantId": { "type": "string" },
+    "source": { "enum": ["internal", "external"] },
+    "type": { "enum": ["secret", "code", "pii", "config"] },
+    "ruleId": { "type": "string" },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "severity": { "enum": ["low", "medium", "high", "critical"] },
+    "repoId": { "type": "string" },
+    "filePath": { "type": "string" },
+    "lineStart": { "type": "integer" },
+    "lineEnd": { "type": "integer" },
+    "maskedSnippet": { "type": "string" },
+    "fingerprint": { "type": "string" },
+    "commitSha": { "type": "string" },
+    "eventId": { "type": "string" },
+    "externalUrl": { "type": "string" },
+    "timestamp": { "type": "string", "format": "date-time" }
+  }
+}
