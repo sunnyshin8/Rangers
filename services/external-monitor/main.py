@@ -19,7 +19,7 @@ KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "localhost:9092")
 DATABASE_URL = os.getenv(
     "DATABASE_URL", "postgresql://leakradar:leakradar@localhost:5432/leakradar"
 )
-TOPIC = "dlp.external.candidates"
+TOPIC = "policy.external.candidates"
 SERP_URL = "https://api.brightdata.com/request"
 BRIGHT_DATA_API_KEY = os.getenv("BRIGHT_DATA_API_KEY")
 BRIGHT_DATA_SERP_ZONE = os.getenv("BRIGHT_DATA_SERP_ZONE", "serp_api1")
@@ -92,7 +92,7 @@ def write_local_evidence_snapshot(
     title: str,
     content: str,
 ) -> None:
-    LOCAL_EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
+    validate_local_evidence_dir()
     captured_at = datetime.now(timezone.utc).isoformat()
     payload = {
         "evidence_key": evidence_key,
@@ -228,6 +228,38 @@ def scan_content(text: str, url: str, tenant_id: str) -> list[dict]:
     return candidates
 
 
+def compute_rating(confidence: float, severity: str) -> int:
+    """Compute a simple integer rating (1-5) from confidence and severity."""
+    base = int(min(5, max(1, round(confidence * 5))))
+    sev_bonus = {"critical": 2, "high": 1, "medium": 0, "low": -1}.get(
+        (severity or "").lower(), 0
+    )
+    rating = max(1, min(5, base + sev_bonus))
+    return rating
+
+
+def validate_local_evidence_dir() -> None:
+    try:
+        LOCAL_EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
+        test_file = LOCAL_EVIDENCE_DIR / f".__writable_check_{uuid.uuid4().hex}"
+        test_file.write_text("ok", encoding="utf-8")
+        test_file.unlink()
+    except Exception:
+        # fallback to repo root / tmp directory
+        fallback = Path(os.getenv("TMP", REPO_ROOT / "local_evidence_fallback"))
+        try:
+            fallback.mkdir(parents=True, exist_ok=True)
+            test_file = fallback / f".__writable_check_{uuid.uuid4().hex}"
+            test_file.write_text("ok", encoding="utf-8")
+            test_file.unlink()
+            # update global dir
+            global LOCAL_EVIDENCE_DIR
+            LOCAL_EVIDENCE_DIR = fallback
+        except Exception:
+            # last resort: use current working directory
+            LOCAL_EVIDENCE_DIR = Path(".")
+
+
 def run_tenant_scan(tenant_id: str, producer: KafkaProducer):
     with db() as conn:
         with conn.cursor() as cur:
@@ -258,6 +290,9 @@ def run_tenant_scan(tenant_id: str, producer: KafkaProducer):
             evidence_key = build_evidence_key(keyword, url, title, page)
             write_local_evidence_snapshot(evidence_key, keyword, url, title, page)
             for cand in scan_content(page, url, tenant_id):
+                # preserve evidence mapping and add a simple rating
+                cand["evidenceKey"] = evidence_key
+                cand["rating"] = compute_rating(cand.get("confidence", 0.0), cand.get("severity", ""))
                 publish(producer, cand)
                 with db() as conn:
                     with conn.cursor() as cur:
