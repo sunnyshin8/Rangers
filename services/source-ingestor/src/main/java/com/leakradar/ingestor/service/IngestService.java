@@ -4,14 +4,20 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.leakradar.common.events.RepoEvent;
 import com.leakradar.common.kafka.Topics;
+import com.leakradar.common.security.CryptoUtil;
 import com.leakradar.ingestor.repo.RepoRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -20,15 +26,18 @@ public class IngestService {
     private final KafkaTemplate<String, Object> kafkaTemplate;
     private final ObjectMapper objectMapper;
     private final RepoRepository repoRepository;
+    private final JdbcTemplate jdbc;
     private final String defaultTenantId;
 
     public IngestService(KafkaTemplate<String, Object> kafkaTemplate,
                          ObjectMapper objectMapper,
                          RepoRepository repoRepository,
+                         JdbcTemplate jdbc,
                          @Value("${leakradar.default-tenant-id}") String defaultTenantId) {
         this.kafkaTemplate = kafkaTemplate;
         this.objectMapper = objectMapper;
         this.repoRepository = repoRepository;
+        this.jdbc = jdbc;
         this.defaultTenantId = defaultTenantId;
     }
 
@@ -60,12 +69,14 @@ public class IngestService {
                 root.path("pull_request").path("user").path("login").asText("unknown"));
         String message = root.path("head_commit").path("message").asText("");
 
+        String token = getGitHubToken(defaultTenantId);
+
         List<RepoEvent.FileChange> files = new ArrayList<>();
         JsonNode commits = root.path("commits");
         if (commits.isArray()) {
             for (JsonNode commit : commits) {
-                addFiles(files, commit.path("added"), "added");
-                addFiles(files, commit.path("modified"), "modified");
+                addFiles(files, commit.path("added"), "added", token, repoFullName, commitSha);
+                addFiles(files, commit.path("modified"), "modified", token, repoFullName, commitSha);
             }
         }
 
@@ -85,10 +96,125 @@ public class IngestService {
         publishRepoEvent(event);
     }
 
-    private void addFiles(List<RepoEvent.FileChange> files, JsonNode paths, String changeType) {
+    private void addFiles(List<RepoEvent.FileChange> files, JsonNode paths, String changeType, String token, String repoFullName, String commitSha) {
         if (!paths.isArray()) return;
         for (JsonNode p : paths) {
-            files.add(new RepoEvent.FileChange(p.asText(), "", changeType));
+            String path = p.asText();
+            String content = "";
+            if (token != null && !token.isBlank() && !"removed".equals(changeType)) {
+                content = fetchGitHubFileContent(token, repoFullName, path, commitSha);
+            }
+            files.add(new RepoEvent.FileChange(path, content, changeType));
         }
+    }
+
+    private String getGitHubToken(String tenantId) {
+        try {
+            List<Map<String, Object>> rows = jdbc.queryForList(
+                    "SELECT config_encrypted FROM integrations WHERE tenant_id = ?::uuid AND provider = 'github'",
+                    tenantId);
+            if (!rows.isEmpty() && rows.get(0).get("config_encrypted") != null) {
+                byte[] encrypted = (byte[]) rows.get(0).get("config_encrypted");
+                return CryptoUtil.decrypt(encrypted);
+            }
+        } catch (Exception e) {
+            System.err.println("Failed to fetch or decrypt GitHub token: " + e.getMessage());
+        }
+        return null;
+    }
+
+    private String fetchGitHubFileContent(String token, String repoFullName, String path, String commitSha) {
+        try {
+            java.net.http.HttpClient client = java.net.http.HttpClient.newHttpClient();
+            String cleanUrl = "https://api.github.com/repos/" + repoFullName + "/contents/" + path.replace(" ", "%20") + "?ref=" + commitSha;
+
+            java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder()
+                    .uri(URI.create(cleanUrl))
+                    .header("Authorization", "Bearer " + token)
+                    .header("Accept", "application/vnd.github.v3+json")
+                    .header("User-Agent", "LeakRadar-Ingestor")
+                    .GET()
+                    .build();
+
+            java.net.http.HttpResponse<String> response = client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() == 200) {
+                JsonNode fileNode = objectMapper.readTree(response.body());
+                String base64Content = fileNode.path("content").asText("").replaceAll("\\s", "");
+                if (!base64Content.isEmpty()) {
+                    byte[] decoded = Base64.getDecoder().decode(base64Content);
+                    return new String(decoded, StandardCharsets.UTF_8);
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Failed to fetch file content for " + path + ": " + e.getMessage());
+        }
+        return "";
+    }
+
+    public void ingestGitLabPayload(String eventType, String payload) throws Exception {
+        JsonNode root = objectMapper.readTree(payload);
+        String repoFullName = root.path("project").path("path_with_namespace").asText("unknown/unknown");
+        String branch = root.path("ref").asText("refs/heads/main").replace("refs/heads/", "");
+        String commitSha = root.path("checkout_sha").asText("");
+        String author = root.path("user_username").asText("unknown");
+        
+        List<RepoEvent.FileChange> files = new ArrayList<>();
+        JsonNode commits = root.path("commits");
+        if (commits.isArray()) {
+            for (JsonNode commit : commits) {
+                addFiles(files, commit.path("added"), "added", null, repoFullName, commitSha);
+                addFiles(files, commit.path("modified"), "modified", null, repoFullName, commitSha);
+            }
+        }
+
+        RepoEvent event = new RepoEvent(
+                UUID.randomUUID().toString(),
+                defaultTenantId,
+                repoRepository.findOrCreateRepoId(defaultTenantId, repoFullName),
+                repoFullName,
+                "Push Hook".equals(eventType) ? "push" : "pull_request",
+                branch,
+                commitSha,
+                author,
+                "GitLab commit",
+                Instant.now(),
+                files
+        );
+        publishRepoEvent(event);
+    }
+
+    public void ingestBitbucketPayload(String eventType, String payload) throws Exception {
+        JsonNode root = objectMapper.readTree(payload);
+        String repoFullName = root.path("repository").path("full_name").asText("unknown/unknown");
+        
+        String branch = "main";
+        String commitSha = "";
+        String author = "unknown";
+        String message = "Bitbucket push";
+        
+        JsonNode changes = root.path("push").path("changes");
+        if (changes.isArray() && changes.size() > 0) {
+            JsonNode chg = changes.get(0).path("new");
+            branch = chg.path("name").asText("main");
+            JsonNode target = chg.path("target");
+            commitSha = target.path("hash").asText("");
+            message = target.path("message").asText("Bitbucket push");
+            author = target.path("author").path("raw").asText("unknown");
+        }
+
+        RepoEvent event = new RepoEvent(
+                UUID.randomUUID().toString(),
+                defaultTenantId,
+                repoRepository.findOrCreateRepoId(defaultTenantId, repoFullName),
+                repoFullName,
+                "repo:push".equals(eventType) ? "push" : "pull_request",
+                branch,
+                commitSha,
+                author,
+                message,
+                Instant.now(),
+                List.of()
+        );
+        publishRepoEvent(event);
     }
 }

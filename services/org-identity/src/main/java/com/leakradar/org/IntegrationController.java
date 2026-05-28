@@ -1,5 +1,6 @@
 package com.leakradar.org;
 
+import com.leakradar.common.security.CryptoUtil;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
 
@@ -27,13 +28,18 @@ public class IntegrationController {
     @PostMapping
     public void upsert(@RequestHeader("X-Tenant-Id") String tenantId,
                        @RequestBody Map<String, String> body) {
+        String provider = body.get("provider");
+        String config = body.get("config");
+        byte[] encrypted = config != null ? CryptoUtil.encrypt(config) : null;
         jdbc.update(
                 """
-                INSERT INTO integrations (tenant_id, provider, status)
-                VALUES (?::uuid, ?, 'active')
-                ON CONFLICT (tenant_id, provider) DO UPDATE SET status = 'active'
+                INSERT INTO integrations (tenant_id, provider, config_encrypted, status)
+                VALUES (?::uuid, ?, ?, 'active')
+                ON CONFLICT (tenant_id, provider) DO UPDATE SET 
+                    config_encrypted = COALESCE(EXCLUDED.config_encrypted, integrations.config_encrypted),
+                    status = 'active'
                 """,
-                tenantId, body.get("provider"));
+                tenantId, provider, encrypted);
     }
 
     @GetMapping("/bright-data")
@@ -51,7 +57,7 @@ public class IntegrationController {
     public void saveBrightData(@RequestHeader("X-Tenant-Id") String tenantId,
                                @RequestBody Map<String, Object> body) {
         String apiKey = (String) body.get("apiKey");
-        byte[] encrypted = apiKey != null ? apiKey.getBytes() : null;
+        byte[] encrypted = apiKey != null ? CryptoUtil.encrypt(apiKey) : null;
         jdbc.update(
                 """
                 INSERT INTO bright_data_config (tenant_id, api_key_encrypted, serp_enabled, unlocker_enabled,

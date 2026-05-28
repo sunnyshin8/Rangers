@@ -1,0 +1,40 @@
+replicaCount: 1
+
+image:
+  repository: eclipse-temurin
+  tag: 21-jre
+  pullPolicy: IfNotPresent
+
+postgres:
+  url: jdbc:postgresql://postgres:5432/leakradar
+  username: leakradar
+  password: leakradar
+
+kafka:
+  bootstrap: redpanda:9092
+
+redis:
+  url: redis://redis:6379/0
+
+services:
+  orgIdentity:
+    port: 8081
+    replicaCount: 2
+  sourceIngestor:
+    port: 8082
+    replicaCount: 2
+  policyEngine:
+    port: 8083
+    replicaCount: 2
+  internalScanner:
+    port: 8084
+    replicaCount: 3
+  alertService:
+    port: 8085
+    replicaCount: 1
+  web:
+    port: 3000
+    replicaCount: 2
+  bff:
+    port: 4000
+    replicaCount: 2

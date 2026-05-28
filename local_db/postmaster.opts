@@ -1,0 +1,1 @@
+C:/Program Files/PostgreSQL/17/bin/postgres.exe "-D" "g:/github_kick/leak-radar/local_db" "-p" "5433"

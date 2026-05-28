@@ -10,13 +10,14 @@ export default function LoginPage() {
   const [password, setPassword] = useState("demo-admin");
   const [error, setError] = useState("");
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
+  async function login(nextEmail: string, nextPassword: string) {
+    setEmail(nextEmail);
+    setPassword(nextPassword);
     setError("");
     try {
       const data = await api<{ token: string; user: { role: string } }>(
         "/auth/login",
-        { method: "POST", body: JSON.stringify({ email, password }) }
+        { method: "POST", body: JSON.stringify({ email: nextEmail, password: nextPassword }) }
       );
       localStorage.setItem("token", data.token);
       localStorage.setItem("role", data.user.role);
@@ -26,10 +27,15 @@ export default function LoginPage() {
     }
   }
 
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    await login(email, password);
+  }
+
   return (
     <main style={{ maxWidth: 400, margin: "4rem auto", padding: "0 1rem" }}>
       <div className="card">
-        <h1 style={{ marginTop: 0 }}>Leak Radar</h1>
+        <h1 style={{ marginTop: 0 }}>Leak Ranger</h1>
         <p style={{ color: "var(--muted)" }}>
           Sign in to triage code and secret leaks.
         </p>
@@ -44,6 +50,10 @@ export default function LoginPage() {
           </label>
           {error && <p style={{ color: "var(--critical)", margin: 0 }}>{error}</p>}
           <button type="submit">Sign in</button>
+          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+            <button type="button" onClick={() => login("admin@demo.local", "demo-admin")}>Use admin demo</button>
+            <button type="button" onClick={() => login("user@demo.local", "demo-user")}>Use user demo</button>
+          </div>
         </form>
         <p style={{ fontSize: "0.8rem", color: "var(--muted)", marginBottom: 0 }}>
           Demo: admin@demo.local / demo-admin or user@demo.local / demo-user

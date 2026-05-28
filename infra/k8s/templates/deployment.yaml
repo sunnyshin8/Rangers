@@ -1,0 +1,53 @@
+{{- range $name, $svc := .Values.services }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: leak-radar-{{ $name | kebabcase }}
+  labels:
+    app: leak-radar-{{ $name | kebabcase }}
+spec:
+  replicas: {{ $svc.replicaCount }}
+  selector:
+    matchLabels:
+      app: leak-radar-{{ $name | kebabcase }}
+  template:
+    metadata:
+      labels:
+        app: leak-radar-{{ $name | kebabcase }}
+    spec:
+      containers:
+        - name: {{ $name | kebabcase }}
+          image: "{{ $.Values.image.repository }}:{{ $.Values.image.tag }}"
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          ports:
+            - containerPort: {{ $svc.port }}
+          env:
+            - name: SPRING_DATASOURCE_URL
+              value: "{{ $.Values.postgres.url }}"
+            - name: SPRING_DATASOURCE_USERNAME
+              value: "{{ $.Values.postgres.username }}"
+            - name: SPRING_DATASOURCE_PASSWORD
+              value: "{{ $.Values.postgres.password }}"
+            - name: KAFKA_BOOTSTRAP
+              value: "{{ $.Values.kafka.bootstrap }}"
+            - name: REDIS_URL
+              value: "{{ $.Values.redis.url }}"
+            - name: LEAKRADAR_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: leak-radar-secrets
+                  key: encryption-key
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: leak-radar-{{ $name | kebabcase }}
+spec:
+  ports:
+    - port: {{ $svc.port }}
+      targetPort: {{ $svc.port }}
+  selector:
+    app: leak-radar-{{ $name | kebabcase }}
+  type: ClusterIP
+---
+{{- end }}

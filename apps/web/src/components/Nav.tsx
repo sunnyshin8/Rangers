@@ -1,12 +1,17 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
 export function Nav() {
   const pathname = usePathname();
   const router = useRouter();
-  const role = typeof window !== "undefined" ? localStorage.getItem("role") : null;
+  const [role, setRole] = useState<string | null>(null);
+
+  useEffect(() => {
+    setRole(localStorage.getItem("role"));
+  }, []);
 
   function logout() {
     localStorage.removeItem("token");
@@ -19,7 +24,9 @@ export function Nav() {
       ? [
           { href: "/admin", label: "Dashboard" },
           { href: "/admin/integrations", label: "Integrations" },
-          { href: "/admin/policies", label: "Policies" },
+          { href: "/admin/alert-routing", label: "Alert Routing" },
+          { href: "/admin/policies", label: "Prevention Policies" },
+          { href: "/admin/audit", label: "Audit Log" },
           { href: "/alerts", label: "Incidents" },
         ]
       : [{ href: "/alerts", label: "My Alerts" }];
@@ -36,7 +43,7 @@ export function Nav() {
       }}
     >
       <nav style={{ display: "flex", gap: "1.25rem", alignItems: "center" }}>
-        <strong>Leak Radar</strong>
+        <strong>Leak Ranger</strong>
         {links.map((l) => (
           <Link
             key={l.href}

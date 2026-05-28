@@ -33,6 +33,12 @@ def classify_internal(candidate: dict) -> dict:
     elif rule == "github_pat":
         label = "github_personal_access_token"
         confidence = min(0.95, confidence + 0.03)
+    elif rule == "payment_card_number":
+        label = "payment_card_number"
+        confidence = min(0.99, confidence + 0.2)
+    elif rule == "payment_card_cvv":
+        label = "payment_card_cvv"
+        confidence = 0.99
     elif rule == "private_key":
         label = "private_key_pem"
         confidence = 0.99
@@ -67,6 +73,8 @@ def suggest_remediation(label: str) -> str:
     steps = {
         "aws_access_key": "Revoke the IAM key in AWS Console, rotate credentials, and enable git-secrets pre-commit hooks.",
         "github_personal_access_token": "Revoke the PAT on GitHub, scan git history with BFG, and add secret scanning in CI.",
+        "payment_card_number": "Treat the card number as exposed, remove it from public content, and notify the payment or fraud team for immediate review.",
+        "payment_card_cvv": "Treat the CVV as highly sensitive, remove it immediately, and rotate the affected payment workflow or form handling.",
         "private_key_pem": "Invalidate the certificate/key pair and replace across all services.",
         "environment_file": "Remove .env from repository history and use a secrets manager.",
         "password": "Rotate the password and audit access logs for misuse.",

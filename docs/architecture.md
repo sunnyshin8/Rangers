@@ -1,4 +1,4 @@
-# Code & Secret Leak Radar — Architecture
+# Code & Secret Leak Ranger — Architecture
 
 See the implementation plan in the repository README and the original design doc.
 

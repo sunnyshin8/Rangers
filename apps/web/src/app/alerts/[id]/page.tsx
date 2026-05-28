@@ -13,6 +13,7 @@ type IncidentDetail = {
   source: string;
   summary: string;
   notes: string;
+  source_url?: string;
   candidates: Array<{
     masked_snippet: string;
     file_path: string;
@@ -31,28 +32,42 @@ export default function IncidentDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [incident, setIncident] = useState<IncidentDetail | null>(null);
   const [notes, setNotes] = useState("");
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    api<IncidentDetail>(`/incidents/${id}`).then((d) => {
-      setIncident(d);
-      setNotes(d.notes || "");
-    });
+    setError("");
+    api<IncidentDetail>(`/incidents/${id}`)
+      .then((d) => {
+        setIncident(d);
+        setNotes(d.notes || "");
+      })
+      .catch((err) => {
+        setIncident(null);
+        setError(err instanceof Error ? err.message : "Unable to load incident");
+      });
   }, [id]);
 
   async function update(status: string) {
-    await api(`/incidents/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify({ status, notes }),
-    });
-    const updated = await api<IncidentDetail>(`/incidents/${id}`);
-    setIncident(updated);
+    try {
+      setError("");
+      await api(`/incidents/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status, notes }),
+      });
+      const updated = await api<IncidentDetail>(`/incidents/${id}`);
+      setIncident(updated);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to update incident");
+    }
   }
 
   if (!incident) {
     return (
       <>
         <Nav />
-        <main style={{ padding: "1.5rem" }}>Loading…</main>
+        <main style={{ padding: "1.5rem" }}>
+          {error || "Loading…"}
+        </main>
       </>
     );
   }
@@ -62,9 +77,17 @@ export default function IncidentDetailPage() {
       <Nav />
       <main style={{ maxWidth: 800, margin: "0 auto", padding: "1.5rem" }}>
         <h1>{incident.title}</h1>
-        <p>
+        {error && <p style={{ color: "var(--critical)", marginTop: 0 }}>{error}</p>}
+        <p style={{ display: "flex", gap: "0.75rem", alignItems: "center", margin: "0.5rem 0 1.25rem 0" }}>
           <span className={`badge badge-${incident.severity}`}>{incident.severity}</span>{" "}
-          <span style={{ color: "var(--muted)" }}>{incident.source}</span>
+          <span style={{ color: "var(--muted)", textTransform: "capitalize" }}>Source:</span>
+          {incident.source_url ? (
+            <a href={incident.source_url} target="_blank" rel="noopener noreferrer" style={{ fontWeight: 600 }}>
+              {incident.source} ↗
+            </a>
+          ) : (
+            <span style={{ fontWeight: 600 }}>{incident.source}</span>
+          )}
         </p>
         <div className="card">
           <h3>Summary</h3>

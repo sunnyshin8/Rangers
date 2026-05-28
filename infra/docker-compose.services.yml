@@ -52,7 +52,8 @@ services:
     environment:
       KAFKA_BOOTSTRAP: redpanda:9092
       DATABASE_URL: postgresql://leakradar:leakradar@postgres:5432/leakradar
-      BRIGHT_DATA_MOCK: "true"
+      BRIGHT_DATA_MOCK: ${BRIGHT_DATA_MOCK:-true}
+      BRIGHT_DATA_API_KEY: ${BRIGHT_DATA_API_KEY:-}
     depends_on: [redpanda, postgres]
 
   alert-service:
@@ -62,4 +63,5 @@ services:
       KAFKA_BOOTSTRAP: redpanda:9092
       DATABASE_URL: postgresql://leakradar:leakradar@postgres:5432/leakradar
       REDIS_URL: redis://redis:6379/0
+      ALERT_DEFAULT_SLACK_WEBHOOK: ${ALERT_DEFAULT_SLACK_WEBHOOK:-}
     depends_on: [redpanda, postgres, redis]

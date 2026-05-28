@@ -4,6 +4,7 @@ import os
 import uuid
 from datetime import datetime, timezone
 
+import httpx
 import psycopg2
 import redis
 from fastapi import FastAPI
@@ -17,6 +18,10 @@ DATABASE_URL = os.getenv(
     "DATABASE_URL", "postgresql://leakradar:leakradar@localhost:5432/leakradar"
 )
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+ALERT_DEFAULT_SLACK_WEBHOOK = os.getenv(
+    "ALERT_DEFAULT_SLACK_WEBHOOK",
+    "",
+)
 redis_client = redis.from_url(REDIS_URL)
 
 
@@ -42,6 +47,24 @@ def process_incident(incident: dict):
                 (tenant_id,),
             )
             routes = cur.fetchall()
+
+    incident_title = incident.get("title") or "Leak incident detected"
+    incident_severity = (incident.get("severity") or "unknown").upper()
+
+    def send_slack_alert(webhook_url: str):
+        payload = {
+            "text": f"Leak Ranger Alert: {incident_severity} - {incident_title}",
+            "blocks": [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f":rotating_light: *Leak Ranger Alert*\\n*Severity:* {incident_severity}\\n*Title:* {incident_title}\\n*Incident ID:* {incident_id}",
+                    },
+                }
+            ],
+        }
+        httpx.post(webhook_url, json=payload, timeout=10)
 
     for route in routes:
         alert_id = str(uuid.uuid4())
@@ -81,11 +104,19 @@ def process_incident(incident: dict):
             webhook_url = (route.get("config") or {}).get("url")
             if webhook_url:
                 try:
-                    import httpx
-
-                    httpx.post(webhook_url, json=event, timeout=10)
+                    if channel == "slack":
+                        send_slack_alert(webhook_url)
+                    else:
+                        httpx.post(webhook_url, json=event, timeout=10)
                 except Exception:
                     pass
+
+    # Safety net: send Slack alert via default webhook when no routes are configured.
+    if not routes and ALERT_DEFAULT_SLACK_WEBHOOK:
+        try:
+            send_slack_alert(ALERT_DEFAULT_SLACK_WEBHOOK)
+        except Exception:
+            pass
 
 
 def kafka_worker():
