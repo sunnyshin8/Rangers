@@ -296,12 +296,20 @@ def run_tenant_scan(tenant_id: str, producer: KafkaProducer):
                 publish(producer, cand)
                 with db() as conn:
                     with conn.cursor() as cur:
+                        # ensure rating column exists (safe in Postgres)
+                        try:
+                            cur.execute(
+                                "ALTER TABLE external_candidates ADD COLUMN IF NOT EXISTS rating integer"
+                            )
+                        except Exception:
+                            # ignore if altering is not permitted
+                            pass
                         cur.execute(
                             """
                             INSERT INTO external_candidates
                             (id, tenant_id, url, site_type, snippet_hash, masked_snippet,
-                             fingerprint, confidence, severity, evidence_key)
-                            VALUES (%s::uuid, %s::uuid, %s, %s, %s, %s, %s, %s, %s, %s)
+                             fingerprint, confidence, severity, rating, evidence_key)
+                            VALUES (%s::uuid, %s::uuid, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                             """,
                             (
                                 cand["candidateId"],
@@ -313,6 +321,7 @@ def run_tenant_scan(tenant_id: str, producer: KafkaProducer):
                                 cand["fingerprint"],
                                 cand["confidence"],
                                 cand["severity"],
+                                cand.get("rating", None),
                                 evidence_key,
                             ),
                         )
