@@ -1,0 +1,7 @@
+Evidence snapshot (demo)
+
+File: src/config.ts
+Snippet:
+export const config = { apiKey: "AKIA0DEMO0LEAK0KEY0" };
+
+This is a demo snapshot stored locally for development.

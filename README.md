@@ -75,10 +75,12 @@ npm run dev
 - Home landing page: product overview and MVP feature summary.
 - Alerts: incident feed and demo leak trigger.
 - Admin dashboard: totals, severity mix, source spread, and recent incidents.
+- Compliance: regulatory signals, vendor risk, watchlist exposure, and evidence snapshots.
 - Integrations: GitHub, Bright Data, and watchlist setup.
 - Alert routing: alert channel management.
 - Prevention policies: catalog, editor, and CRED rule templates.
 - Audit log: recorded admin actions and routing changes.
+- Incident detail: sanitized evidence, source links, and risk assessment guidance.
 
 ## Policy Model
 
@@ -107,6 +109,13 @@ The admin dashboard summarizes:
 - Source distribution.
 - Recent incidents with labels.
 - Scanner coverage when available.
+
+The compliance view adds:
+
+- Regulatory/compliance signals tied to security exposure.
+- Vendor risk scoring.
+- Watchlist keyword monitoring.
+- Evidence snapshots with structured source links.
 
 ## Fallback Behavior
 

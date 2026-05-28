@@ -24,6 +24,7 @@ export function Nav() {
       ? [
           { href: "/admin", label: "Dashboard" },
           { href: "/admin/integrations", label: "Integrations" },
+          { href: "/admin/compliance", label: "Compliance" },
           { href: "/admin/alert-routing", label: "Alert Routing" },
           { href: "/admin/policies", label: "Prevention Policies" },
           { href: "/admin/audit", label: "Audit Log" },

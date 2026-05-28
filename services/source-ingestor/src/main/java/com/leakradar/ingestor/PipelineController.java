@@ -52,7 +52,7 @@ public class PipelineController {
                     "ci-system",
                     "CI pipeline log scan",
                     Instant.now(),
-                    List.of(new RepoEvent.FileChange("ci.log", logExcerpt, "added"))
+                    List.of(new RepoEvent.FileChange("ci.log", logExcerpt, "added", "pipeline://" + body.getOrDefault("runId", "ci-run"), null))
             );
             ingestService.publishRepoEvent(event);
         }

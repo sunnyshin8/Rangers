@@ -1,6 +1,10 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import jwt from "jsonwebtoken";
+import fs from "fs";
+import path from "path";
+import crypto from "crypto";
+const fsp = fs.promises;
 
 const ORG_URL = process.env.ORG_URL || "http://localhost:8081";
 const DLP_URL = process.env.DLP_URL || "http://localhost:8083";
@@ -10,6 +14,40 @@ const JWT_SECRET =
 const ALERT_URL = process.env.ALERT_URL || "http://localhost:8085";
 const ALERT_DEFAULT_SLACK_WEBHOOK =
   process.env.ALERT_DEFAULT_SLACK_WEBHOOK || "";
+const EVIDENCE_FS_PATH = process.env.EVIDENCE_FS_PATH || path.join(process.cwd(), "local_evidence");
+const EVIDENCE_OPEN_FOR_ALL = (process.env.EVIDENCE_OPEN_FOR_ALL || "false").toLowerCase() === "true";
+const EVIDENCE_RATE_LIMIT_MAX = Number(process.env.EVIDENCE_RATE_LIMIT_MAX || 20);
+const EVIDENCE_RATE_LIMIT_WINDOW = Number(process.env.EVIDENCE_RATE_LIMIT_WINDOW || 60); // seconds
+const EVIDENCE_SIGNING_SECRET = process.env.EVIDENCE_SIGNING_SECRET || "evidence-signing-dev-secret-change-in-prod";
+
+// Simple in-memory rate limiter: Map<key, Array<timestampSec>>
+const evidenceRateMap = new Map();
+
+function isRateLimited(key) {
+  const now = Math.floor(Date.now() / 1000);
+  const windowStart = now - EVIDENCE_RATE_LIMIT_WINDOW;
+  const arr = evidenceRateMap.get(key) || [];
+  const filtered = arr.filter((t) => t > windowStart);
+  filtered.push(now);
+  evidenceRateMap.set(key, filtered);
+  return filtered.length > EVIDENCE_RATE_LIMIT_MAX;
+}
+
+function signEvidenceKey(key, expires) {
+  const h = crypto.createHmac("sha256", EVIDENCE_SIGNING_SECRET);
+  h.update(`${key}:${expires}`);
+  return h.digest("hex");
+}
+
+function verifyEvidenceSig(key, expires, sig) {
+  if (!key || !expires || !sig) return false;
+  const now = Math.floor(Date.now() / 1000);
+  const exp = Number(expires);
+  if (!Number.isFinite(exp) || exp < now) return false;
+  const expected = signEvidenceKey(key, expires);
+  // Use constant-time comparison
+  return crypto.timingSafeEqual(Buffer.from(expected, "hex"), Buffer.from(sig, "hex"));
+}
 
 // Local interactive memory store for Zero-Dependency fallback demo mode
 const localDemoStore = {
@@ -186,7 +224,10 @@ const localDemoStore = {
           masked_snippet: "export const config = { apiKey: \"AKIA0DEMO0LEAK0KEY0\" };",
           rule_id: "aws_key",
           confidence: 0.95,
-          ml_label: "active_secret"
+          ml_label: "active_secret",
+          source_url: "https://github.com/demo-org/payments-api/blob/main/src/config.ts",
+          patch: "@@ -1,4 +1,4 @@\n-export const config = { apiKey: \"REDACTED\" };\n+export const config = { apiKey: \"AKIA0DEMO0LEAK0KEY0\" };\n",
+          evidence_key: "ev-demo-aws-1"
         }
       ],
       externalCandidates: []
@@ -420,6 +461,93 @@ function addAuditLog(entry) {
   localDemoStore.auditLogs = localDemoStore.auditLogs.slice(0, 200);
 }
 
+function buildLocalComplianceFeed() {
+  const regulatorySignals = [
+    {
+      id: "reg-1",
+      category: "Credential Exposure",
+      title: "Open-web and source-control secrets must be treated as compliance evidence",
+      status: "monitoring",
+      impact: "high",
+      summary: "Active secret detections in code or public web sources should be logged, assigned, and retained as audit evidence.",
+      action: "Review open incidents, rotate affected credentials, and attach remediation notes.",
+    },
+    {
+      id: "reg-2",
+      category: "Third-Party Risk",
+      title: "Watchlist-based vendor exposure needs recurring review",
+      status: "review",
+      impact: "medium",
+      summary: "Vendor and supplier keywords should be monitored for leaked credentials, public snippets, and brand exposure.",
+      action: "Add key supplier names and product names to watchlists and monitor new public mentions.",
+    },
+    {
+      id: "reg-3",
+      category: "Auditability",
+      title: "Security actions need evidence snapshots and clear timestamps",
+      status: "active",
+      impact: "medium",
+      summary: "Incident timelines should include source links, sanitized snippets, and change history for review.",
+      action: "Attach source URLs and evidence snapshots to every triaged incident.",
+    },
+  ];
+
+  const vendorRisk = [
+    {
+      vendor: "GitHub",
+      score: 88,
+      posture: "high",
+      rationale: "Source-code ingestion, webhook monitoring, and incident evidence are active.",
+      source: "internal repos and commit history",
+    },
+    {
+      vendor: "Bright Data",
+      score: 72,
+      posture: "medium",
+      rationale: "External web monitoring is configured, but real evidence snapshots still need broader coverage.",
+      source: "public web and search results",
+    },
+    {
+      vendor: "Slack",
+      score: 54,
+      posture: "medium",
+      rationale: "Alert routing is set up, but channel governance and webhook rotation should be tracked.",
+      source: "alert routing and notifications",
+    },
+  ];
+
+  const watchlistSignals = localDemoStore.watchlists.map((item, index) => ({
+    keyword: item.keyword,
+    severity: index % 2 === 0 ? "medium" : "high",
+    status: "watching",
+    reason: `The keyword '${item.keyword}' is being monitored across external sources and repo activity.`,
+  }));
+
+  const evidenceSnapshots = localDemoStore.incidents.slice(0, 4).map((incident) => ({
+    id: incident.id,
+    title: incident.title,
+    source: incident.source,
+    source_url: incident.source_url,
+    created_at: incident.created_at,
+    evidence: incident.candidates.map((candidate) => ({
+      file_path: candidate.file_path,
+      snippet: candidate.masked_snippet,
+    })),
+  }));
+
+  return {
+    regulatorySignals,
+    vendorRisk,
+    watchlistSignals,
+    evidenceSnapshots,
+    sourceCoverage: [
+      { source: "GitHub", status: "connected", coverage: "code + webhooks" },
+      { source: "Bright Data", status: "configured", coverage: "public web + search" },
+      { source: "Slack", status: "configured", coverage: "alert delivery" },
+    ],
+  };
+}
+
 app.post("/api/auth/login", async (request, reply) => {
   const body = request.body || {};
   try {
@@ -488,6 +616,108 @@ app.get("/api/incidents/:id", { preHandler: authHook() }, async (request, reply)
     if (found) return reply.send(found);
   }
   return reply.code(code).send(body);
+});
+
+// Serve evidence snapshots by key (dev: filesystem fallback + demo store)
+// Evidence retrieval: supports signed URLs and authenticated access (role-based ACL, rate limit, audit)
+app.get("/api/evidence/:key", async (request, reply) => {
+  const key = request.params.key;
+  const { expires, sig } = request.query || {};
+
+  // If signed URL params provided, validate signature and expiry and bypass auth
+  if (expires && sig) {
+    const ok = verifyEvidenceSig(key, expires, sig);
+    if (!ok) return reply.code(403).send({ error: "Invalid or expired signed URL" });
+    // rate-limit by signature token to avoid abuse
+    if (isRateLimited(`signed:${sig}`)) return reply.code(429).send({ error: "Too many requests" });
+    addAuditLog({ user_id: `signed-url`, action: "EVIDENCE_ACCESSED", resource_type: "evidence", resource_id: key, metadata: { method: "signed", sig } });
+    // serve file (filesystem or demo) without auth
+  } else {
+    // Require auth for direct access
+    const header = request.headers.authorization;
+    if (!header?.startsWith("Bearer ")) return reply.code(401).send({ error: "Unauthorized" });
+    try {
+      const payload = jwt.verify(header.slice(7), JWT_SECRET);
+      request.user = { id: payload.sub, tenantId: payload.tenantId, email: payload.email, role: payload.role };
+    } catch {
+      return reply.code(401).send({ error: "Unauthorized" });
+    }
+    // ACL: only allow these roles
+    const allowedRoles = new Set(["admin", "analyst", "ops"]);
+    if (!EVIDENCE_OPEN_FOR_ALL && !allowedRoles.has((request.user.role || "").toLowerCase())) {
+      return reply.code(403).send({ error: "Forbidden" });
+    }
+    // rate-limit per user
+    const rlKey = `user:${request.user.id || request.user.email || request.ip}`;
+    if (isRateLimited(rlKey)) return reply.code(429).send({ error: "Too many requests" });
+    addAuditLog({ user_id: request.user.email || request.user.id, action: "EVIDENCE_ACCESSED", resource_type: "evidence", resource_id: key, metadata: { method: "direct" } });
+    // proceed to serve file
+  }
+
+  // Try filesystem-backed store first
+  try {
+    const candidates = [
+      path.join(EVIDENCE_FS_PATH, key),
+      path.join(EVIDENCE_FS_PATH, `${key}.txt`),
+      path.join(EVIDENCE_FS_PATH, `${key}.json`),
+    ];
+    for (const p of candidates) {
+      try {
+        const stat = await fsp.stat(p).catch(() => null);
+        if (stat && stat.isFile()) {
+          const ext = path.extname(p).toLowerCase();
+          let type = "application/octet-stream";
+          if (ext === ".json") type = "application/json";
+          else if (ext === ".html") type = "text/html";
+          else if (ext === ".png") type = "image/png";
+          else if (ext === ".jpg" || ext === ".jpeg") type = "image/jpeg";
+          else if (ext === ".txt") type = "text/plain";
+          const stream = fs.createReadStream(p);
+          reply.header("Content-Type", type);
+          reply.header("Content-Length", String(stat.size));
+          return reply.send(stream);
+        }
+      } catch (e) {
+        // continue to next candidate
+      }
+    }
+  } catch (err) {
+    request.log.warn({ err, key }, "Evidence FS lookup failed");
+  }
+
+  // Fallback: look up in demo store and return synthesized snapshot
+  try {
+    for (const inc of localDemoStore.incidents) {
+      const found = (inc.candidates || []).find((c) => c.evidence_key === key);
+      if (found) {
+        const body = `Evidence snapshot for ${key}\n\nFile: ${found.file_path}\nSnippet:\n${found.masked_snippet}\n`;
+        return reply.type("text/plain").send(body);
+      }
+      const ext = (inc.externalCandidates || []).find((c) => c.evidence_key === key);
+      if (ext) {
+        const body = `External evidence snapshot for ${key}\n\nSource: ${ext.url}\nSnippet:\n${ext.masked_snippet}\n`;
+        return reply.type("text/plain").send(body);
+      }
+    }
+  } catch (e) {
+    request.log.warn({ e, key }, "Demo evidence lookup failed");
+  }
+
+  return reply.code(404).send({ error: "Evidence not found" });
+});
+
+// Generate a signed URL for an evidence key (admin only)
+app.post("/api/evidence/:key/signed", { preHandler: authHook("admin") }, async (request, reply) => {
+  const key = request.params.key;
+  const body = request.body || {};
+  const ttl = Number(body.ttlSeconds || body.ttl || 3600);
+  const now = Math.floor(Date.now() / 1000);
+  const expires = now + Math.max(60, Math.min(60 * 60 * 24 * 7, ttl)); // min 60s, max 7d
+  const sig = signEvidenceKey(key, String(expires));
+  const host = request.headers.host || `localhost:${process.env.PORT || 4000}`;
+  const url = `http://${host}/api/evidence/${encodeURIComponent(key)}?expires=${expires}&sig=${sig}`;
+  addAuditLog({ user_id: request.user.email || request.user.id, action: "EVIDENCE_SIGNED_URL_CREATED", resource_type: "evidence", resource_id: key, metadata: { expires, ttl } });
+  return reply.send({ url, expires, sig });
 });
 
 app.patch("/api/incidents/:id", { preHandler: authHook() }, async (request, reply) => {
@@ -872,6 +1102,10 @@ app.get("/api/audit", { preHandler: authHook("admin") }, async (request, reply) 
     return reply.send(localDemoStore.auditLogs);
   }
   return reply.code(code).send(body);
+});
+
+app.get("/api/compliance", { preHandler: authHook("admin") }, async (request, reply) => {
+  return reply.send(buildLocalComplianceFeed());
 });
 
 app.post("/api/pipeline/events", { preHandler: authHook("admin") }, async (request, reply) => {

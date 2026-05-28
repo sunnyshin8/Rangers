@@ -23,7 +23,9 @@
         "properties": {
           "path": { "type": "string" },
           "content": { "type": "string" },
-          "changeType": { "enum": ["added", "modified", "removed"] }
+          "changeType": { "enum": ["added", "modified", "removed"] },
+          "sourceUrl": { "type": "string" },
+          "diffPatch": { "type": "string" }
         }
       }
     }

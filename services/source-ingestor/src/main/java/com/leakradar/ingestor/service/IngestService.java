@@ -75,8 +75,13 @@ public class IngestService {
         JsonNode commits = root.path("commits");
         if (commits.isArray()) {
             for (JsonNode commit : commits) {
-                addFiles(files, commit.path("added"), "added", token, repoFullName, commitSha);
-                addFiles(files, commit.path("modified"), "modified", token, repoFullName, commitSha);
+                JsonNode commitFiles = loadGitHubCommitFiles(token, repoFullName, commit.path("id").asText(commitSha), commit.path("url").asText(""));
+                if (commitFiles.isArray() && commitFiles.size() > 0) {
+                    addFilesFromCommitDetails(files, commitFiles, token, repoFullName, commit.path("id").asText(commitSha));
+                } else {
+                    addFiles(files, commit.path("added"), "added", token, repoFullName, commitSha, null);
+                    addFiles(files, commit.path("modified"), "modified", token, repoFullName, commitSha, null);
+                }
             }
         }
 
@@ -104,8 +109,77 @@ public class IngestService {
             if (token != null && !token.isBlank() && !"removed".equals(changeType)) {
                 content = fetchGitHubFileContent(token, repoFullName, path, commitSha);
             }
-            files.add(new RepoEvent.FileChange(path, content, changeType));
+            files.add(new RepoEvent.FileChange(path, content, changeType, buildGitHubSourceUrl(repoFullName, commitSha, path), null));
         }
+    }
+
+    private void addFiles(List<RepoEvent.FileChange> files, JsonNode paths, String changeType, String token, String repoFullName, String commitSha, String patch) {
+        if (!paths.isArray()) return;
+        for (JsonNode p : paths) {
+            String path = p.asText();
+            String content = "";
+            if (token != null && !token.isBlank() && !"removed".equals(changeType)) {
+                content = fetchGitHubFileContent(token, repoFullName, path, commitSha);
+            }
+            files.add(new RepoEvent.FileChange(path, content, changeType, buildGitHubSourceUrl(repoFullName, commitSha, path), patch));
+        }
+    }
+
+    private void addFilesFromCommitDetails(List<RepoEvent.FileChange> files, JsonNode commitFiles, String token, String repoFullName, String commitSha) {
+        if (!commitFiles.isArray()) return;
+        for (JsonNode file : commitFiles) {
+            String path = file.path("filename").asText("");
+            if (path.isBlank()) continue;
+            String changeType = file.path("status").asText("modified");
+            String patch = file.path("patch").asText("");
+            String content = "";
+            if (!"removed".equals(changeType) && token != null && !token.isBlank()) {
+                content = fetchGitHubFileContent(token, repoFullName, path, commitSha);
+            }
+            if (content.isBlank() && !patch.isBlank()) {
+                content = patch;
+            }
+            files.add(new RepoEvent.FileChange(
+                    path,
+                    content,
+                    changeType,
+                    file.path("blob_url").asText(buildGitHubSourceUrl(repoFullName, commitSha, path)),
+                    patch
+            ));
+        }
+    }
+
+    private JsonNode loadGitHubCommitFiles(String token, String repoFullName, String commitSha, String commitUrl) {
+        try {
+            if (token == null || token.isBlank()) {
+                return objectMapper.createArrayNode();
+            }
+            java.net.http.HttpClient client = java.net.http.HttpClient.newHttpClient();
+            String cleanUrl = (commitUrl != null && !commitUrl.isBlank())
+                    ? commitUrl
+                    : "https://api.github.com/repos/" + repoFullName + "/commits/" + commitSha;
+
+            java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder()
+                    .uri(URI.create(cleanUrl))
+                    .header("Authorization", "Bearer " + token)
+                    .header("Accept", "application/vnd.github+json")
+                    .header("X-GitHub-Api-Version", "2022-11-28")
+                    .header("User-Agent", "LeakRadar-Ingestor")
+                    .GET()
+                    .build();
+
+            java.net.http.HttpResponse<String> response = client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() == 200) {
+                return objectMapper.readTree(response.body()).path("files");
+            }
+        } catch (Exception e) {
+            System.err.println("Failed to fetch commit details for " + commitSha + ": " + e.getMessage());
+        }
+        return objectMapper.createArrayNode();
+    }
+
+    private String buildGitHubSourceUrl(String repoFullName, String commitSha, String path) {
+        return "https://github.com/" + repoFullName + "/blob/" + commitSha + "/" + path;
     }
 
     private String getGitHubToken(String tenantId) {

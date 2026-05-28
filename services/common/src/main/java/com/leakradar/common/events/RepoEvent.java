@@ -16,5 +16,5 @@ public record RepoEvent(
         Instant timestamp,
         List<FileChange> files
 ) {
-    public record FileChange(String path, String content, String changeType) {}
+    public record FileChange(String path, String content, String changeType, String sourceUrl, String diffPatch) {}
 }

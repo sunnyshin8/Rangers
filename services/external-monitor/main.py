@@ -5,6 +5,7 @@ import os
 import re
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 import urllib.parse
 
 import httpx
@@ -25,6 +26,8 @@ BRIGHT_DATA_SERP_ZONE = os.getenv("BRIGHT_DATA_SERP_ZONE", "serp_api1")
 BRIGHT_DATA_SERP_FORMAT = os.getenv("BRIGHT_DATA_SERP_FORMAT", "raw")
 MOCK_MODE = os.getenv("BRIGHT_DATA_MOCK", "true").lower() == "true"
 MOCK_MODE = MOCK_MODE and not BRIGHT_DATA_API_KEY
+REPO_ROOT = Path(__file__).resolve().parents[2]
+LOCAL_EVIDENCE_DIR = Path(os.getenv("LOCAL_EVIDENCE_DIR", REPO_ROOT / "local_evidence"))
 
 
 def db():
@@ -67,6 +70,57 @@ def context_window(text: str, start: int, end: int, radius: int = 40) -> str:
 def publish(producer: KafkaProducer, candidate: dict):
     producer.send(TOPIC, key=candidate["candidateId"], value=json.dumps(candidate).encode())
     producer.flush()
+
+
+def build_evidence_key(query: str, url: str, title: str, content: str) -> str:
+    seed = "|".join(
+        [
+            query,
+            url,
+            title,
+            fingerprint(content[:5000]),
+            "mock" if MOCK_MODE else "brightdata",
+        ]
+    )
+    return f"ev-{hashlib.sha256(seed.encode()).hexdigest()[:24]}"
+
+
+def write_local_evidence_snapshot(
+    evidence_key: str,
+    query: str,
+    url: str,
+    title: str,
+    content: str,
+) -> None:
+    LOCAL_EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
+    captured_at = datetime.now(timezone.utc).isoformat()
+    payload = {
+        "evidence_key": evidence_key,
+        "query": query,
+        "url": url,
+        "title": title,
+        "capturedAt": captured_at,
+        "mode": "mock" if MOCK_MODE else "brightdata",
+        "contentHash": fingerprint(content[:5000]),
+        "content": content[:50000],
+    }
+    (LOCAL_EVIDENCE_DIR / f"{evidence_key}.json").write_text(
+        json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+    (LOCAL_EVIDENCE_DIR / f"{evidence_key}.txt").write_text(
+        "\n".join(
+            [
+                f"Evidence key: {evidence_key}",
+                f"Query: {query}",
+                f"URL: {url}",
+                f"Title: {title}",
+                f"Captured at: {captured_at}",
+                "",
+                content[:50000],
+            ]
+        ),
+        encoding="utf-8",
+    )
 
 
 def fetch_serp(api_key: str, query: str) -> list[dict]:
@@ -196,10 +250,13 @@ def run_tenant_scan(tenant_id: str, producer: KafkaProducer):
     for keyword in keywords:
         for result in fetch_serp(api_key, keyword):
             url = result["url"]
+            title = result.get("title", "SERP")
             try:
                 page = fetch_page(api_key, url)
             except Exception:
                 page = result.get("snippet", "")
+            evidence_key = build_evidence_key(keyword, url, title, page)
+            write_local_evidence_snapshot(evidence_key, keyword, url, title, page)
             for cand in scan_content(page, url, tenant_id):
                 publish(producer, cand)
                 with db() as conn:
@@ -208,8 +265,8 @@ def run_tenant_scan(tenant_id: str, producer: KafkaProducer):
                             """
                             INSERT INTO external_candidates
                             (id, tenant_id, url, site_type, snippet_hash, masked_snippet,
-                             fingerprint, confidence, severity)
-                            VALUES (%s::uuid, %s::uuid, %s, %s, %s, %s, %s, %s, %s)
+                             fingerprint, confidence, severity, evidence_key)
+                            VALUES (%s::uuid, %s::uuid, %s, %s, %s, %s, %s, %s, %s, %s)
                             """,
                             (
                                 cand["candidateId"],
@@ -221,6 +278,7 @@ def run_tenant_scan(tenant_id: str, producer: KafkaProducer):
                                 cand["fingerprint"],
                                 cand["confidence"],
                                 cand["severity"],
+                                evidence_key,
                             ),
                         )
                     conn.commit()
