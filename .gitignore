@@ -38,3 +38,10 @@ local_db/pglog
 local_db/postmaster.pid
 local_db/*.log
 local_db/*.tmp
+
+# Ignore generated presentation and image assets (keep source SVGs in repo)
+/presentation/
+/assets/*.png
+/assets/*.jpg
+/assets/*.jpeg
+/assets/generated/
