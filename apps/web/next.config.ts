@@ -19,7 +19,10 @@ function isPublicHttpUrl(url: string | undefined): boolean {
 
 const nextConfig: NextConfig = {
   async rewrites() {
-    const bffUrl = process.env.BFF_URL;
+    // Prefer server-side BFF_URL (set in Vercel). Fallback to NEXT_PUBLIC_BFF_URL
+    // which may be provided for preview or client-side calls. We only configure
+    // a server-side rewrite if the URL appears public.
+    const bffUrl = process.env.BFF_URL || process.env.NEXT_PUBLIC_BFF_URL;
     if (!isPublicHttpUrl(bffUrl)) {
       return [];
     }

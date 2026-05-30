@@ -1,4 +1,8 @@
-const API = "/api";
+// If a public BFF URL is provided at build/runtime, prefer calling it directly
+// from the client. Otherwise fall back to the internal `/api` route which
+// contains demo handlers when running in demo mode.
+const PUBLIC_BFF = typeof process !== "undefined" ? (process.env.NEXT_PUBLIC_BFF_URL || "") : "";
+const API = PUBLIC_BFF ? `${PUBLIC_BFF.replace(/\/+$/, "")}/api` : "/api";
 
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
